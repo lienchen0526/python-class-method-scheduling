@@ -4,7 +4,7 @@ from typing import Union, List, Tuple
 from collections.abc import Callable
 from schedule import Scheduler, Job
 from time import sleep
-import atexit
+from datetime import timedelta, datetime
 
 class Attention(object):
     def __init__(self):
@@ -12,20 +12,25 @@ class Attention(object):
     
     @staticmethod
     def schedule(
-        days: Union[int, None] = 0, 
-        hours: Union[int, None] = 0,
-        minutes: Union[int, None] = 0,
-        seconds: Union[int, None] = 0,
-        lastfor: int = 0,
+        interval: Union[None, timedelta] = None,
+        standfor: Union[None, timedelta] = None,
+        until: Union[None, datetime] = None,
         group: int = 0
     ):
+        assert isinstance(interval, timedelta), f':interval: argument should be an instance of <datetime.timedelta>, but {type(interval)} is detected with value: {interval}'
+        assert not (standfor and until), f':standfor: argument cannot appear with :until: argument'
+        if standfor:
+            assert isinstance(standfor, timedelta), f':interval: argument should be an instance of <datetime.timedelta>, but {type(standfor)} is detected with value: {standfor}'
+        if until:
+            assert isinstance(until, datetime), f':until: argument should be an instance of <datetime.datetime>, but {type(until)} is detected with value: {until}'
+            standfor = until - datetime.now()
+        
         def label(method):
             setattr(method, 
                     '__schinterval__', 
                     {
-                        'delta': days * 24 * 3600 + hours * 3600 + minutes * 60 + seconds,
-                        'lastfor': lastfor,
-                        'keepasjob': True
+                        'delta': interval.total_seconds(),
+                        'standfor': standfor.total_seconds() if isinstance(standfor, timedelta) else 0
                     }
                 )
             setattr(method, '__schgroup__', {'group': group})
@@ -62,16 +67,28 @@ class Attention(object):
                     [getattr(self, x) for x in dir(self) if \
                      hasattr(getattr(self, x), '__trigger__')]
                 
+                self._schlock = threading.Lock() # For Accessing scheduler jobs queue
                 self._schback = Scheduler()
-                self._schtrd = threading.Thread(
+
+                self._schkillers = [
+                    threading.Timer(
+                        interval = getattr(x, '__schinterval__').get('standfor'),
+                        function = self.unsubscribe,
+                        args = [x]
+                    ) for x in self._onschmethods if getattr(x, '__schinterval__').get('standfor')
+                ]
+
+                self._schrunner = threading.Thread(
                     target = self._schmain,
                     daemon = True
                 )
                 
-                self._schtrd.start()
+                self._schrunner.start()
+                for killer in self._schkillers:
+                    killer.daemon = True
+                    killer.start()
             
             def _schmain(self):
-                self._ongoing = True
                 for method in self._onschmethods:
                     meth_delta = method.__schinterval__.get('delta', 0)
                     if meth_delta > 0:
@@ -80,22 +97,24 @@ class Attention(object):
                             scheduler = self._schback
                         ).seconds.do(method).tag(method.__name__)
                     else: pass
-                while self._ongoing:
-                    self._schback.run_pending()
+                while True:
+                    with self._schlock:
+                        self._schback.run_pending()
                     sleep(1)
             
-            def unsubscribe(self, method: Union[None, str] = None):
+            def unsubscribe(self, method: Union[None, str, Callable] = None) -> int:
                 if not method:
-                    self._schback.clear()
-                    self._ongoing = False
-                    self._schtrd.join()
-                else:
-                    assert type(method) == str, f'Method name must be string or callable'
-                    self._schback.clear(method)
-                pass
+                    with self._schlock:
+                        self._schback.clear()
+                    return 1
+                if callable(method):
+                    with self._schlock:
+                        self._schback.clear(method.__name__)
+                    return 1
+                if type(method) == str:
+                    with self._schlock:
+                        self._schback.clear(method)
+                    return 1
+                return -1
 
-            def __exit__(self):
-                print("exit is calling")
-            def __del__(self):
-                print("del is calling")
         return Wrapped
