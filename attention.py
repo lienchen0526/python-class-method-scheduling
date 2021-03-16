@@ -71,15 +71,18 @@ class Attention(object):
                         Job(
                             interval = meth_delta, 
                             scheduler = self._schback
-                        ).seconds.do(method)
+                        ).seconds.do(method).tag(method.__name__)
                     else: pass
                 while self._ongoing:
                     self._schback.run_pending()
                     sleep(1)
             
-            def unsubscribe(self):
-                self._schback.clear()
-                self._ongoing = False
-                self._schtrd.join()
-                
+            def unsubscribe(self, method: Union[None, str] = None):
+                if not method:
+                    self._schback.clear()
+                    self._ongoing = False
+                    self._schtrd.join()
+                else:
+                    assert type(method) == str, f'Method name must be string or callable'
+                    self._schback.clear(method)
         return Wrapped
