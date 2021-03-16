@@ -4,6 +4,7 @@ from typing import Union, List, Tuple
 from collections.abc import Callable
 from schedule import Scheduler, Job
 from time import sleep
+import atexit
 
 class Attention(object):
     def __init__(self):
@@ -15,13 +16,16 @@ class Attention(object):
         hours: Union[int, None] = 0,
         minutes: Union[int, None] = 0,
         seconds: Union[int, None] = 0,
+        lastfor: int = 0,
         group: int = 0
     ):
         def label(method):
             setattr(method, 
                     '__schinterval__', 
                     {
-                        'delta': days * 24 * 3600 + hours * 3600 + minutes * 60 + seconds
+                        'delta': days * 24 * 3600 + hours * 3600 + minutes * 60 + seconds,
+                        'lastfor': lastfor,
+                        'keepasjob': True
                     }
                 )
             setattr(method, '__schgroup__', {'group': group})
@@ -53,14 +57,17 @@ class Attention(object):
                 self._onschmethods =\
                     [getattr(self, x) for x in dir(self) if \
                      hasattr(getattr(self, x), '__schinterval__')]
-                self._triggers = \
+                
+                self._triggers =\
                     [getattr(self, x) for x in dir(self) if \
                      hasattr(getattr(self, x), '__trigger__')]
                 
                 self._schback = Scheduler()
                 self._schtrd = threading.Thread(
-                    target = self._schmain
+                    target = self._schmain,
+                    daemon = True
                 )
+                
                 self._schtrd.start()
             
             def _schmain(self):
@@ -85,4 +92,10 @@ class Attention(object):
                 else:
                     assert type(method) == str, f'Method name must be string or callable'
                     self._schback.clear(method)
+                pass
+
+            def __exit__(self):
+                print("exit is calling")
+            def __del__(self):
+                print("del is calling")
         return Wrapped
