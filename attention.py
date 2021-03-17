@@ -2,9 +2,14 @@ from functools import wraps, WRAPPER_ASSIGNMENTS
 import threading
 from typing import Union, List, Tuple
 from collections.abc import Callable
-from schedule import Scheduler, Job
 from time import sleep
 from datetime import timedelta, datetime
+
+try:
+    from schedule import Scheduler, Job
+except ModuleNotFoundError:
+    import pip
+    pip.main(['install', 'schedule==1.0.0'])
 
 class Attention(object):
     def __init__(self):
@@ -100,7 +105,7 @@ class Attention(object):
                 while True:
                     with self._schlock:
                         self._schback.run_pending()
-                    sleep(1)
+                    sleep(0.5)
             
             def unsubscribe(self, method: Union[None, str, Callable] = None) -> int:
                 if not method:
@@ -118,3 +123,36 @@ class Attention(object):
                 return -1
 
         return Wrapped
+
+def InstanceKeeper(cls_):
+    class WrapedCLS(cls_):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            assignments = filter(
+                lambda x: hasattr(cls_, x), WRAPPER_ASSIGNMENTS
+            )
+            for attr in assignments:
+                setattr(self, attr, getattr(cls_, attr))
+            
+            self._keepers = threading.Thread()
+        
+        def startkeeperjob(self, callable_: Callable, *args, **kwargs):
+            if not callable(callable_):
+                raise TypeError(f'The type of callable_: {type(callable_)} is not callable')
+
+            if not hasattr(self, callable_.__name__):
+                raise NameError(f'The current instance does not have the method name {callable_.__name__}.')
+            
+            _local_method = getattr(self, callable_.__name__)
+
+            if not _local_method == callable_:
+                raise UnboundLocalError(f':callable_: method can not be controlled by the instance.')
+            
+            threading.Thread(
+                target = callable_,
+                args = args,
+                kwargs = kwargs,
+                daemon = True
+            ).start()
+
+    return WrapedCLS
