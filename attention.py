@@ -22,12 +22,17 @@ class Attention(object):
         until: Union[None, datetime] = None,
         group: int = 0
     ):
-        assert isinstance(interval, timedelta), f':interval: argument should be an instance of <datetime.timedelta>, but {type(interval)} is detected with value: {interval}'
-        assert not (standfor and until), f':standfor: argument cannot appear with :until: argument'
+        if not isinstance(interval, timedelta):
+            raise TypeError(f':interval: argument should be an instance of <datetime.timedelta>, but {type(interval)} is detected with value: {interval}')
+        if standfor and until:
+            raise NotImplementedError(f':standfor: argument cannot appear with :until: argument')
+        
         if standfor:
-            assert isinstance(standfor, timedelta), f':interval: argument should be an instance of <datetime.timedelta>, but {type(standfor)} is detected with value: {standfor}'
+            if not isinstance(standfor, timedelta):
+                raise TypeError(f':interval: argument should be an instance of <datetime.timedelta>, but {type(standfor)} is detected with value: {standfor}')
         if until:
-            assert isinstance(until, datetime), f':until: argument should be an instance of <datetime.datetime>, but {type(until)} is detected with value: {until}'
+            if not isinstance(until, datetime):
+                raise TypeError(f':until: argument should be an instance of <datetime.datetime>, but {type(until)} is detected with value: {until}')
             standfor = until - datetime.now()
         
         def label(method):
@@ -126,6 +131,11 @@ class Attention(object):
                     with self._schlock:
                         self._schback.clear(method)
                     return 1
+                return -1
+            
+            def resubscribe(self, method: Union[None, str, Callable] = None) -> int:
+                if not method:
+                    pass
                 return -1
 
         return Wrapped
