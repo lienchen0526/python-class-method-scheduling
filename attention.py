@@ -113,10 +113,16 @@ class Attention(object):
                         self._schback.clear()
                     return 1
                 if callable(method):
+                    if not hasattr(self, method.__name__):
+                        raise AttributeError(f'Object does not has the method {method.__name__}')
+                    if not method == getattr(self, method.__name__):
+                        raise UnboundLocalError(f'method is not bound by current instance {self}. Do you mis-pass the method of other instance to current instance?')
                     with self._schlock:
                         self._schback.clear(method.__name__)
                     return 1
                 if type(method) == str:
+                    if not hasattr(self, method):
+                        raise AttributeError(f'Object does not has the method {method}')
                     with self._schlock:
                         self._schback.clear(method)
                     return 1
