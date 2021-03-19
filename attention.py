@@ -1,9 +1,10 @@
 from functools import wraps, WRAPPER_ASSIGNMENTS
 import threading
-from typing import Union, List, Tuple
+from typing import Optional, Union, List, Tuple
 from collections.abc import Callable
 from time import sleep
 from datetime import timedelta, datetime
+import asyncio
 
 try:
     from schedule import Scheduler, Job
@@ -12,7 +13,7 @@ except ModuleNotFoundError:
     pip.main(['install', 'schedule==1.0.0'])
 
 class Attention(object):
-    def __init__(self):
+    def __init__(self, max_workers: Optional[int] = 2):
         self._pool = []
     
     @staticmethod
@@ -33,7 +34,7 @@ class Attention(object):
         if until:
             if not isinstance(until, datetime):
                 raise TypeError(f':until: argument should be an instance of <datetime.datetime>, but {type(until)} is detected with value: {until}')
-            standfor = until - datetime.now()
+            standfor: timedelta = until - datetime.now()
         
         def label(method):
             setattr(method, 
@@ -59,26 +60,26 @@ class Attention(object):
         setattr(meth_or_grp, '__trigger__', True)
         return meth_or_grp
     
-    def __call__(self, Cls = None):
+    def __call__(self, Cls: Optional[type] = None) -> type:
         class Wrapped(Cls):
             def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+                sup_rslt = super().__init__(*args, **kwargs)
                 assignments = filter(
                     lambda x: hasattr(Cls, x), WRAPPER_ASSIGNMENTS
                 )
                 for attr in assignments:
                     setattr(self, attr, getattr(Cls, attr))
                 
-                self._onschmethods =\
+                self._onschmethods: List[Callable] =\
                     [getattr(self, x) for x in dir(self) if \
                      hasattr(getattr(self, x), '__schinterval__')]
                 
-                self._triggers =\
+                self._triggers: List[Callable] =\
                     [getattr(self, x) for x in dir(self) if \
                      hasattr(getattr(self, x), '__trigger__')]
                 
-                self._schlock = threading.Lock() # For Accessing scheduler jobs queue
-                self._schback = Scheduler()
+                self._schlock: threading.Lock = threading.Lock() # For Accessing scheduler jobs queue
+                self._schback: Scheduler = Scheduler()
 
                 self._schkillers = [
                     threading.Timer(
@@ -88,7 +89,7 @@ class Attention(object):
                     ) for x in self._onschmethods if getattr(x, '__schinterval__').get('standfor')
                 ]
 
-                self._schrunner = threading.Thread(
+                self._schrunner: threading.Thread = threading.Thread(
                     target = self._schmain,
                     daemon = True
                 )
@@ -97,10 +98,12 @@ class Attention(object):
                 for killer in self._schkillers:
                     killer.daemon = True
                     killer.start()
+                
+                return sup_rslt
             
-            def _schmain(self):
+            def _schmain(self) -> None:
                 for method in self._onschmethods:
-                    meth_delta = method.__schinterval__.get('delta', 0)
+                    meth_delta: Union[float, int] = method.__schinterval__.get('delta', 0)
                     if meth_delta > 0:
                         Job(
                             interval = meth_delta, 
